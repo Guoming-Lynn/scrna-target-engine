@@ -198,6 +198,21 @@ def test_inspect_non_h5ad_lists_no_columns(tmp_path: Path) -> None:
     assert "没有分组" in str(payload["note"])
 
 
+def test_demo_matrix_is_synthetic_and_names_its_source(tmp_path: Path) -> None:
+    import anndata as ad
+    from write_demo_h5ad import SOURCE, main
+
+    path = tmp_path / "demo.h5ad"
+    assert main(["--out", str(path)]) == 0
+    data = ad.read_h5ad(path)
+    assert data.n_obs == 80
+    assert data.n_vars == 250
+    assert "IFITM3" in list(data.var_names)
+    assert float(data.X.min()) >= 0
+    assert data.uns["demo_source"] == SOURCE
+    assert "策展" in SOURCE
+
+
 def test_scrublet_call_passes_configured_random_state() -> None:
     source = (ROOT / "scripts" / "phase01_scrublet.py").read_text(encoding="utf-8")
     call = source.split("Scrublet(", 1)[1].split(")", 1)[0]
