@@ -10,7 +10,7 @@ Python 3.11。当前 pin 的 anndata 0.12.19 不支持 3.10。在仓库根目录
 uv sync
 ```
 
-依赖版本写在 `pyproject.toml`。富集不使用在线接口，因此没有 gseapy。
+依赖版本写在 `pyproject.toml`。富集读取本地 GMT。GSEA 使用 `gseapy.prerank`，不调用在线接口。
 
 ## 启动
 

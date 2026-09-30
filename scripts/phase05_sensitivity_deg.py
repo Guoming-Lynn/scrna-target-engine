@@ -31,7 +31,7 @@ mpl.use('Agg')
 import matplotlib.pyplot as plt
 import seaborn as sns
 import scanpy as sc
-from local_enrichment import gmt_sha256, local_gsea_table, local_ora_table
+from local_enrichment import GseaNotRun, gmt_sha256, local_gsea_table, local_ora_table
 from scientific_plots import plot_ora_results, plot_gsea_results
 
 # Import local publication plotting utilities
@@ -48,14 +48,14 @@ from plot_utils import (
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 
-def run_local_ora(gene_list, table_prefix, figure_prefix, gmt_path):
+def run_local_ora(gene_list, table_prefix, figure_prefix, gmt_path, universe):
     if gmt_path is None or not Path(gmt_path).is_file():
         logging.warning("Local GMT is missing. Enrichment was not sent anywhere.")
         return None
     if not gene_list or len(gene_list) < 5:
         logging.warning("Gene list too small for ORA enrichment (< 5 genes).")
         return None
-    res = local_ora_table(list(gene_list), Path(gmt_path))
+    res = local_ora_table(list(gene_list), Path(gmt_path), list(universe))
     if res is None or res.empty:
         return None
     res.to_csv(table_prefix.with_suffix('.csv'), index=False, encoding='utf-8-sig')
@@ -66,12 +66,12 @@ def run_local_ora(gene_list, table_prefix, figure_prefix, gmt_path):
     return res
 
 
-def run_local_gsea(rnk_df, table_prefix, figure_prefix, gmt_path):
+def run_local_gsea(rnk_df, table_prefix, figure_prefix, gmt_path, seed):
     if gmt_path is None or not Path(gmt_path).is_file():
         logging.warning("Local GMT is missing. Enrichment was not sent anywhere.")
         return None
     logging.info("Running local pre-ranked scores against %s", gmt_path)
-    res = local_gsea_table(rnk_df, Path(gmt_path))
+    res = local_gsea_table(rnk_df, Path(gmt_path), permutations=1000, seed=int(seed))
     if res is None or res.empty:
         return None
     res.to_csv(table_prefix.with_suffix('.csv'), index=False, encoding='utf-8-sig')
@@ -96,6 +96,7 @@ def main():
     FDR_CUTOFF = config.get("DEG_FDR_CUTOFF", 0.05)
     FC_CUTOFF = config.get("DEG_LOG2FC_CUTOFF", 0.25)
     GMT_PATH = config.get("LOCAL_GMT")
+    RANDOM_SEED = int(config.get("RANDOM_SEED", 42))
 
     set_publication_style()
 
@@ -261,16 +262,22 @@ def main():
 
         logging.info(f"Case DEGs: {len(up_genes)} Up-regulated, {len(down_genes)} Down-regulated.")
 
-        # ORA
-        ora_up = run_local_ora(up_genes, dirs['tables'] / "ora_case_up", dirs['figures'] / "ora_case_up_pathways", GMT_PATH)
-        ora_down = run_local_ora(down_genes, dirs['tables'] / "ora_case_down", dirs['figures'] / "ora_case_down_pathways", GMT_PATH)
+        universe = res_case["names"].astype(str).tolist()
+        ora_up = run_local_ora(up_genes, dirs['tables'] / "ora_case_up", dirs['figures'] / "ora_case_up_pathways", GMT_PATH, universe)
+        ora_down = run_local_ora(down_genes, dirs['tables'] / "ora_case_down", dirs['figures'] / "ora_case_down_pathways", GMT_PATH, universe)
 
         # GSEA Pre-ranked
         rnk = res_case[res_case['names'].map(lambda value: str(value).casefold() != TARGET_GENE.casefold())][['names', 'log2FC', 'p_val_adj']].copy()
         rnk['score'] = np.sign(rnk['log2FC']) * -np.log10(np.clip(rnk['p_val_adj'], 1e-300, 1.0))
         rnk_df = rnk[['names', 'score']].dropna().sort_values('score', ascending=False)
         rnk_df.to_csv(dirs['tables'] / "gsea_rank_input.rnk", sep='\t', index=False, header=False)
-        gsea_res = run_local_gsea(rnk_df, dirs['tables'] / "gsea_results", dirs['figures'] / "gsea_case_pathway_nes", GMT_PATH)
+        try:
+            gsea_res = run_local_gsea(rnk_df, dirs['tables'] / "gsea_results", dirs['figures'] / "gsea_case_pathway_nes", GMT_PATH, RANDOM_SEED)
+            gsea_status = "completed" if gsea_res is not None else "no_significant_output"
+        except GseaNotRun:
+            logging.warning("GSEA 未运行")
+            gsea_res = None
+            gsea_status = "未运行"
         enrichment_report.update({
             'status': 'completed' if (ora_up is not None or ora_down is not None or gsea_res is not None) else 'no_significant_output',
             'n_case_sig_deg_including_target': int(len(sig_case_all)),
@@ -282,6 +289,7 @@ def main():
             'ora_down_significant_fdr_rows': int((ora_down['Adjusted P-value'] < FDR_CUTOFF).sum()) if ora_down is not None and 'Adjusted P-value' in ora_down else 0,
             'gsea_rows': int(len(gsea_res)) if gsea_res is not None else 0,
             'gsea_significant_fdr_rows': int((gsea_res['FDR q-val'] < FDR_CUTOFF).sum()) if gsea_res is not None and 'FDR q-val' in gsea_res else 0,
+            'gsea_status': gsea_status,
         })
 
     # 7. Save Checkpoint with Strata Annotations

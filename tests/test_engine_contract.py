@@ -10,7 +10,7 @@ import pytest
 from config_contract import DEFAULT_BATCH_COLUMN, batch_column, missing_config
 from figure_quality import quality_reasons
 from input_checks import input_rejection
-from local_enrichment import local_gsea_table, local_ora_table
+from local_enrichment import load_gmt, local_gsea_table, local_ora_table
 from resolution_note import RESOLUTION_NOTE, choose_resolution
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -108,9 +108,48 @@ def test_local_ora_uses_only_the_gmt_file(tmp_path: Path) -> None:
         "HALLMARK_B\tdesc\tOTHER1\tOTHER2\tOTHER3\n",
         encoding="utf-8",
     )
-    table = local_ora_table(["GENE1", "GENE2", "GENE3", "GENE4", "GENE5"], gmt)
+    universe = ["GENE1", "GENE2", "GENE3", "GENE4", "GENE5", "OTHER1", "OTHER2", "OTHER3", "BG1"]
+    table = local_ora_table(["GENE1", "GENE2", "GENE3", "GENE4", "GENE5"], gmt, universe)
     assert table.iloc[0]["Term"] == "HALLMARK_A"
     assert "Adjusted P-value" in table.columns
+
+
+def test_gmt_description_is_not_a_gene(tmp_path: Path) -> None:
+    gmt = tmp_path / "sets.gmt"
+    gmt.write_text("SET\tNA\tGENE1\tGENE2\n", encoding="utf-8")
+    members = {gene.casefold() for gene in load_gmt(gmt)["SET"]}
+    assert members == {"gene1", "gene2"}
+
+
+def test_ora_p_value_matches_scipy_on_the_supplied_universe(tmp_path: Path) -> None:
+    from scipy.stats import hypergeom
+
+    gmt = tmp_path / "sets.gmt"
+    genes = [f"G{index}" for index in range(20)]
+    gmt.write_text("SET\tNA\t" + "\t".join(genes[:10]) + "\n", encoding="utf-8")
+    query = genes[:5]
+    table = local_ora_table(query, gmt, genes)
+    expected = float(hypergeom.sf(4, 20, 10, 5))
+    assert table.iloc[0]["Adjusted P-value"] == pytest.approx(expected)
+    wider = local_ora_table(query, gmt, genes + ["EXTRA"])
+    assert float(wider.iloc[0]["Adjusted P-value"]) != pytest.approx(expected)
+
+
+def test_gsea_repeats_with_the_same_seed(tmp_path: Path) -> None:
+    gmt = tmp_path / "sets.gmt"
+    gmt.write_text("SET_A\tNA\tA\tB\tC\nSET_B\tNA\tX\tY\tZ\n", encoding="utf-8")
+    ranked = pd.DataFrame(
+        {"names": ["A", "B", "C", "X", "Y", "Z"], "score": [3, 2, 1, -1, -2, -3]}
+    )
+    first = local_gsea_table(ranked, gmt, permutations=50, seed=42)
+    second = local_gsea_table(ranked, gmt, permutations=50, seed=42)
+    assert first.reset_index(drop=True).equals(second.reset_index(drop=True))
+    assert "FDR q-val" in first.columns
+
+
+def test_phase05_does_not_call_online_enrichment_method() -> None:
+    text = PHASE05.read_text(encoding="utf-8")
+    assert ".enrichr(" not in text
 
 
 def test_batch_column_default_is_defined_once() -> None:
