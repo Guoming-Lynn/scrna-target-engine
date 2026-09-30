@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 import scanpy as sc
 from config_contract import batch_column
+from pipeline_utils import harmony_cluster_count
 from plot_utils import save_publication_figure, COLOR_CASE, COLOR_CONTROL
 from figure_recipes import qc_metric_panel, expression_figure_suite, umap_category_palette
 import anndata as ad
@@ -114,7 +115,14 @@ def main():
     logging.info(f"Running Harmony batch correction on '{BATCH_COLUMN}'")
     import harmonypy as hm
     if BATCH_COLUMN in adata.obs and adata.obs[BATCH_COLUMN].nunique() > 1:
-        ho = hm.run_harmony(adata.obsm['X_pca'], adata.obs, BATCH_COLUMN, max_iter_harmony=20, random_state=RANDOM_SEED)
+        ho = hm.run_harmony(
+            adata.obsm['X_pca'],
+            adata.obs,
+            BATCH_COLUMN,
+            max_iter_harmony=20,
+            random_state=RANDOM_SEED,
+            nclust=harmony_cluster_count(adata.n_obs),
+        )
         corrected = np.asarray(ho.Z_corr)
         if corrected.shape[0] != adata.n_obs and corrected.shape[1] == adata.n_obs:
             corrected = corrected.T
@@ -307,8 +315,11 @@ def main():
         if valid_genes:
             plot_markers[ct] = valid_genes
             
-    sc.pl.dotplot(adata, plot_markers, groupby='leiden', show=False, standard_scale='var')
-    save_publication_figure(plt.gcf(), fig_dir / 'markers_canonical_dotplot')
+    if plot_markers:
+        sc.pl.dotplot(adata, plot_markers, groupby='leiden', show=False, standard_scale='var')
+        save_publication_figure(plt.gcf(), fig_dir / 'markers_canonical_dotplot')
+    else:
+        logging.warning("No canonical markers in this matrix. Skipping the marker dotplot.")
     
     expression_figure_suite(adata, 'leiden', fig_dir, config)
 

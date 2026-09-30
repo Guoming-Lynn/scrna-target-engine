@@ -12,7 +12,11 @@ GENE = "IFITM3"
 
 
 def write_demo(path: Path) -> None:
-    """Write 80 cells and 250 genes. Each cell expresses every gene, so QC can keep them."""
+    """Write 80 cells and 250 genes. Each cell expresses every gene, so QC can keep them.
+
+    Half of each group is mildly IFITM3-high. A larger gap splits them into
+    clusters smaller than the subclustering minimum.
+    """
     import anndata as ad
     import numpy as np
     import pandas as pd
@@ -23,7 +27,8 @@ def write_demo(path: Path) -> None:
     counts = rng.integers(1, 6, size=(n_cells, n_genes), dtype=np.int32)
     names = [f"GENE{index:03d}" for index in range(n_genes - 1)]
     names.append(GENE)
-    counts[:40, -1] = counts[:40, -1] + 30
+    high = np.array([*range(20), *range(40, 60)])
+    counts[high, -1] = counts[high, -1] + 12
     obs = pd.DataFrame(
         {
             "group": ["Disease"] * 40 + ["Healthy"] * 40,

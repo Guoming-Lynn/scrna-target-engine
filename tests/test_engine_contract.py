@@ -239,6 +239,14 @@ def test_ora_bh_includes_zero_overlap_sets_in_the_universe(tmp_path: Path) -> No
     assert float(table.loc["HIT", "Adjusted P-value"]) == pytest.approx(min(1.0, raw * 2))
 
 
+def test_harmony_cluster_count_never_asks_for_one_cluster() -> None:
+    from pipeline_utils import harmony_cluster_count
+
+    assert harmony_cluster_count(40) == 2
+    assert harmony_cluster_count(80) == 3
+    assert harmony_cluster_count(10_000) == 100
+
+
 def test_local_gsea_returns_fdr_column(tmp_path: Path) -> None:
     gmt = tmp_path / "sets.gmt"
     gmt.write_text("SET_A\tdesc\tA\tB\tC\nSET_B\tdesc\tX\tY\tZ\n", encoding="utf-8")

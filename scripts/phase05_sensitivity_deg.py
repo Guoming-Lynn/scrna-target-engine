@@ -252,9 +252,17 @@ def main():
     sig_case = pd.DataFrame()
     if not res_case.empty and {'p_val_adj','log2FC','names'}.issubset(res_case.columns):
         sig_case_all = res_case[(res_case['p_val_adj'] < FDR_CUTOFF) & (res_case['log2FC'].abs() >= FC_CUTOFF)]
-        sig_case = sig_case_all[sig_case_all['names'].map(lambda value: str(value).casefold() != TARGET_GENE.casefold())].copy()
+        # An empty boolean index drops the columns on this pandas build.
+        if sig_case_all.empty:
+            sig_case = sig_case_all.copy()
+            target_rows = sig_case_all.copy()
+        else:
+            target_mask = sig_case_all['names'].map(
+                lambda value: str(value).casefold() == TARGET_GENE.casefold()
+            )
+            sig_case = sig_case_all.loc[~target_mask].copy()
+            target_rows = sig_case_all.loc[target_mask].copy()
         sig_case.to_csv(dirs['tables'] / f"deg_{CASE_LABEL}_significant.csv", index=False, encoding='utf-8-sig')
-        target_rows = sig_case_all[sig_case_all['names'].map(lambda value: str(value).casefold() == TARGET_GENE.casefold())]
 
         up_genes = sig_case[sig_case['log2FC'] >= FC_CUTOFF]['names'].tolist()
         down_genes = sig_case[sig_case['log2FC'] <= -FC_CUTOFF]['names'].tolist()

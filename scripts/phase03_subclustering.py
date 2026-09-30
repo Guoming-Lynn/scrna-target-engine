@@ -38,6 +38,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import scanpy as sc
 from config_contract import batch_column
+from pipeline_utils import harmony_cluster_count
 from figure_recipes import expression_figure_suite, qc_metric_panel, umap_category_palette
 from plot_panels import plot_composition_stacked_barplot, plot_two_bar_composition
 
@@ -179,7 +180,14 @@ def run_subclustering_dr(adata, config):
         raise ValueError('Do not correct the biological group with Harmony')
     if batch_col in adata.obs and adata.obs[batch_col].nunique() > 1:
         import harmonypy as hm
-        ho = hm.run_harmony(adata.obsm['X_pca'], adata.obs, batch_col, max_iter_harmony=20, random_state=seed)
+        ho = hm.run_harmony(
+            adata.obsm['X_pca'],
+            adata.obs,
+            batch_col,
+            max_iter_harmony=20,
+            random_state=seed,
+            nclust=harmony_cluster_count(adata.n_obs),
+        )
         corrected = np.asarray(ho.Z_corr)
         if corrected.shape != adata.obsm['X_pca'].shape:
             corrected = corrected.T

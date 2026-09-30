@@ -20,3 +20,11 @@ def resolve_target_gene(var_names: Iterable[str], requested: str) -> Optional[st
 
 def is_target_name(value: object, target: str) -> bool:
     return str(value).casefold() == str(target).casefold()
+
+
+def harmony_cluster_count(n_cells: int) -> int:
+    """Use Harmony's N/30 rule, and never ask this build for one cluster.
+
+    harmonypy 0.2.0 leaves sigma as a float when nclust is 1, then crashes.
+    """
+    return max(2, min(round(n_cells / 30.0), 100))
