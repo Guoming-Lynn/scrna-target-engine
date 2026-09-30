@@ -1,0 +1,7 @@
+sample_id,barcode_suffix,patient,group,tissue,condition,note
+Sample1_Control,1,Patient_1,Control,Normal_Tissue,Control_condition,Patient 1 normal tissue control
+Sample1_Disease,2,Patient_1,Disease,Disease_Tissue,Disease_condition,Patient 1 disease tissue
+Sample2_Control,3,Patient_2,Control,Normal_Tissue,Control_condition,Patient 2 normal tissue control
+Sample2_Disease,4,Patient_2,Disease,Disease_Tissue,Disease_condition,Patient 2 disease tissue
+Sample3_Control,5,Patient_3,Control,Normal_Tissue,Control_condition,Patient 3 normal tissue control
+Sample3_Disease,6,Patient_3,Disease,Disease_Tissue,Disease_condition,Patient 3 disease tissue

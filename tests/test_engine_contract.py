@@ -1,0 +1,168 @@
+"""Offline enrichment, figure rejection, and config checks."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pandas as pd
+import pytest
+from config_contract import DEFAULT_BATCH_COLUMN, batch_column, missing_config
+from figure_quality import quality_reasons
+from input_checks import input_rejection
+from local_enrichment import local_gsea_table, local_ora_table
+from resolution_note import RESOLUTION_NOTE, choose_resolution
+
+ROOT = Path(__file__).resolve().parents[1]
+PHASE05 = ROOT / "scripts" / "phase05_sensitivity_deg.py"
+PHASE02 = ROOT / "scripts" / "phase02_global_clustering.py"
+
+
+def test_phase05_does_not_call_network_enrichment() -> None:
+    text = PHASE05.read_text(encoding="utf-8").casefold()
+    assert ".enrichr(" not in text
+    assert "gp.enrichr" not in text
+    assert "local_gmt" in text
+
+
+def test_phase02_labels_heuristic_resolution() -> None:
+    text = PHASE02.read_text(encoding="utf-8")
+    assert RESOLUTION_NOTE in text
+    assert choose_resolution([(0.2, 4), (0.4, 12), (0.8, 20)]) == 0.4
+    assert choose_resolution([(0.2, 4), (0.3, 6)]) == 0.2
+
+
+def test_config_rejects_missing_and_placeholder_values() -> None:
+    assert missing_config({"INPUT_PATH": "a", "OUTPUT_ROOT": "b"}) == ["TARGET_GENE"]
+    assert missing_config(
+        {"TARGET_GENE": "YOUR_GENE", "INPUT_PATH": "a", "OUTPUT_ROOT": "b"}
+    ) == ["TARGET_GENE"]
+    assert missing_config({"TARGET_GENE": "IFITM3", "INPUT_PATH": "a", "OUTPUT_ROOT": "b"}) == []
+
+
+@pytest.mark.parametrize(
+    ("audit", "reason"),
+    [
+        ({"kind": "ranked_violin", "n_input": 0, "groups": []}, "empty_violin"),
+        (
+            {"kind": "ranked_violin", "n_input": 3, "groups": [{"density_drawn": True}]},
+            "single_category_violin",
+        ),
+        (
+            {
+                "kind": "ranked_violin",
+                "n_input": 3,
+                "groups": [{"density_drawn": False}, {"density_drawn": False}],
+            },
+            "all_constant_violin",
+        ),
+        ({"kind": "feature", "n_cells": 0, "positive_cells": 0}, "empty_feature_panel"),
+        ({"kind": "feature", "n_cells": 10, "positive_cells": 0}, "no_positive_target_expression"),
+        ({"kind": "volcano", "n_plotted": 0, "n_up": 0, "n_down": 0}, "empty_volcano"),
+        ({"kind": "volcano", "n_plotted": 8, "n_up": 0, "n_down": 0}, "no_significant_genes"),
+    ],
+)
+def test_each_figure_rejection_reason(audit: dict[str, object], reason: str) -> None:
+    assert reason in quality_reasons([audit])
+
+
+def test_input_rejection_paths() -> None:
+    assert input_rejection(
+        n_cells=10,
+        n_genes=100,
+        min_cells=20,
+        min_genes=50,
+        numeric=True,
+        minimum=0,
+        target_resolved="IFITM3",
+        target_requested="IFITM3",
+    ) == "Expression matrix has too few cells (10)"
+    assert "negative" in str(
+        input_rejection(
+            n_cells=100,
+            n_genes=100,
+            min_cells=20,
+            min_genes=50,
+            numeric=True,
+            minimum=-1,
+            target_resolved="IFITM3",
+            target_requested="IFITM3",
+        )
+    )
+    assert input_rejection(
+        n_cells=100,
+        n_genes=100,
+        min_cells=20,
+        min_genes=50,
+        numeric=True,
+        minimum=0,
+        target_resolved=None,
+        target_requested="NOGENE",
+    )
+
+
+def test_local_ora_uses_only_the_gmt_file(tmp_path: Path) -> None:
+    gmt = tmp_path / "sets.gmt"
+    gmt.write_text(
+        "HALLMARK_A\tdesc\tGENE1\tGENE2\tGENE3\tGENE4\tGENE5\n"
+        "HALLMARK_B\tdesc\tOTHER1\tOTHER2\tOTHER3\n",
+        encoding="utf-8",
+    )
+    table = local_ora_table(["GENE1", "GENE2", "GENE3", "GENE4", "GENE5"], gmt)
+    assert table.iloc[0]["Term"] == "HALLMARK_A"
+    assert "Adjusted P-value" in table.columns
+
+
+def test_batch_column_default_is_defined_once() -> None:
+    assert batch_column({}) == DEFAULT_BATCH_COLUMN
+    assert DEFAULT_BATCH_COLUMN == "sample_id"
+    assert batch_column({"BATCH_COLUMN": "donor"}) == "donor"
+    assert batch_column({"BATCH_COLUMN": ""}) == "sample_id"
+    for name in (
+        "phase01_qc_scrublet.py",
+        "phase02_global_clustering.py",
+        "phase03_subclustering.py",
+    ):
+        text = (ROOT / "scripts" / name).read_text(encoding="utf-8")
+        assert 'config.get("BATCH_COLUMN"' not in text
+        assert "config.get('BATCH_COLUMN'" not in text
+        assert "batch_column(config)" in text
+
+
+def test_inspect_h5ad_returns_obs_columns(tmp_path: Path) -> None:
+    import anndata as ad
+    import numpy as np
+    import pandas as pd
+    from inspect_obs import main
+
+    path = tmp_path / "tiny.h5ad"
+    ad.AnnData(
+        X=np.zeros((2, 1)),
+        obs=pd.DataFrame({"group": ["Disease", "Healthy"], "sample_id": ["S1", "S2"]}),
+        var=pd.DataFrame(index=["IFITM3"]),
+    ).write_h5ad(path)
+    out = tmp_path / "inspect.json"
+    assert main(["--input", str(path), "--out", str(out)]) == 0
+    payload = json.loads(out.read_text(encoding="utf-8"))
+    columns = {item["name"]: item["values"] for item in payload["columns"]}
+    assert columns["group"] == ["Disease", "Healthy"]
+    assert columns["sample_id"] == ["S1", "S2"]
+
+
+def test_inspect_non_h5ad_lists_no_columns(tmp_path: Path) -> None:
+    from inspect_obs import inspect_h5ad
+
+    path = tmp_path / "counts.csv"
+    path.write_text("gene,a\nIFITM3,1\n", encoding="utf-8")
+    payload = inspect_h5ad(path)
+    assert payload["columns"] == []
+    assert "没有分组" in str(payload["note"])
+
+
+def test_local_gsea_returns_fdr_column(tmp_path: Path) -> None:
+    gmt = tmp_path / "sets.gmt"
+    gmt.write_text("SET_A\tdesc\tA\tB\tC\nSET_B\tdesc\tX\tY\tZ\n", encoding="utf-8")
+    ranked = pd.DataFrame({"names": ["A", "B", "C", "X", "Y", "Z"], "score": [3, 2, 1, -1, -2, -3]})
+    table = local_gsea_table(ranked, gmt, permutations=5)
+    assert "FDR q-val" in table.columns
+    assert set(table["Term"]) == {"SET_A", "SET_B"}

@@ -1,0 +1,9 @@
+# Changelog
+
+## 0.1.0 - 2026-09-30
+
+- 从速览工作区拷出引擎代码，不包含 `hadha_source`。
+- 富集改为只读本地 GMT。没有在线富集调用。
+- 全局聚类报告写明分辨率由启发式自动选择。
+- `BATCH_COLUMN` 的默认值只在 `config_contract.py`，三个阶段都从那里读。
+- `inspect_obs.py` 只读 h5ad 的 obs 列名和少量取值。
