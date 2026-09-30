@@ -198,6 +198,32 @@ def test_inspect_non_h5ad_lists_no_columns(tmp_path: Path) -> None:
     assert "没有分组" in str(payload["note"])
 
 
+def test_scrublet_call_passes_configured_random_state() -> None:
+    source = (ROOT / "scripts" / "phase01_scrublet.py").read_text(encoding="utf-8")
+    call = source.split("Scrublet(", 1)[1].split(")", 1)[0]
+    assert "random_state=" in call
+    phase01 = (ROOT / "scripts" / "phase01_qc_scrublet.py").read_text(encoding="utf-8")
+    assert "seed=int(RANDOM_SEED)" in phase01
+
+
+def test_ora_bh_includes_zero_overlap_sets_in_the_universe(tmp_path: Path) -> None:
+    from scipy.stats import hypergeom
+
+    gmt = tmp_path / "sets.gmt"
+    genes = [f"G{index}" for index in range(20)]
+    gmt.write_text(
+        "HIT\tNA\t" + "\t".join(genes[:10]) + "\n"
+        "MISS\tNA\t" + "\t".join(genes[10:15]) + "\n"
+        "OUTSIDE\tNA\tNOT_IN_UNIVERSE\n",
+        encoding="utf-8",
+    )
+    table = local_ora_table(genes[:5], gmt, genes).set_index("Term")
+    raw = float(hypergeom.sf(4, 20, 10, 5))
+    assert set(table.index) == {"HIT", "MISS"}
+    assert float(table.loc["MISS", "Adjusted P-value"]) == pytest.approx(1.0)
+    assert float(table.loc["HIT", "Adjusted P-value"]) == pytest.approx(min(1.0, raw * 2))
+
+
 def test_local_gsea_returns_fdr_column(tmp_path: Path) -> None:
     gmt = tmp_path / "sets.gmt"
     gmt.write_text("SET_A\tdesc\tA\tB\tC\nSET_B\tdesc\tX\tY\tZ\n", encoding="utf-8")

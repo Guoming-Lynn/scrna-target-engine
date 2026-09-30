@@ -17,6 +17,7 @@ def run_sample_scrublet(
     skip: bool,
     rate: float,
     max_threshold: float,
+    seed: int,
     table_dir: Path,
     logger: logging.Logger,
 ):
@@ -35,7 +36,7 @@ def run_sample_scrublet(
         if len(sub_adata) < 50:
             logger.warning("Sample %s has too few cells (%s) for Scrublet. Skipping.", sample, len(sub_adata))
             continue
-        scrub = scr.Scrublet(sub_adata.X, expected_doublet_rate=rate)
+        scrub = scr.Scrublet(sub_adata.X, expected_doublet_rate=rate, random_state=seed)
         doublet_scores, predicted_doublets = scrub.scrub_doublets(
             min_counts=2,
             min_cells=3,

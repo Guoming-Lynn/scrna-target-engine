@@ -327,6 +327,7 @@ def main():
             skip=SKIP_SCRUBLET,
             rate=SCRUBLET_RATE,
             max_threshold=SCRUBLET_MAX_THRESHOLD,
+            seed=int(RANDOM_SEED),
             table_dir=dir_scrub_tables,
             logger=logger,
         )

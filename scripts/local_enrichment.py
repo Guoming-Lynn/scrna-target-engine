@@ -43,10 +43,13 @@ def local_ora_table(genes: list[str], gmt_path: Path, universe: list[str]) -> pd
         return pd.DataFrame(columns=["Term", "Adjusted P-value"])
     for name, members in library.items():
         in_background = {member.casefold() for member in members} & background
+        if not in_background:
+            continue
         overlap = len(query & in_background)
         if overlap == 0:
-            continue
-        p_value = float(hypergeom.sf(overlap - 1, n_universe, len(in_background), n_query))
+            p_value = 1.0
+        else:
+            p_value = float(hypergeom.sf(overlap - 1, n_universe, len(in_background), n_query))
         rows.append({"Term": name, "Overlap": overlap, "Adjusted P-value": p_value})
     frame = pd.DataFrame(rows)
     if frame.empty:
