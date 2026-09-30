@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import shutil
+import sys
 from pathlib import Path
 
 from figure_output import write_figure_index
@@ -195,11 +196,11 @@ def main() -> int:
             report_path = args.output_root / "99_logs" / "figure_quality_dataset_report.json"
             report_path.parent.mkdir(parents=True, exist_ok=True)
             report_path.write_text(json.dumps(assessment, indent=2, ensure_ascii=False), encoding="utf-8")
-        print(json.dumps(assessment, ensure_ascii=False))
+        sys.stdout.write(json.dumps(assessment, ensure_ascii=False) + "\n")
         return 0 if assessment["status"] == "pass" else 4
     report = filter_output(args.output_root, quarantine=not args.no_quarantine)
-    print(json.dumps({"status": report["status"], "rejected_count": len(report.get("rejected", [])),
-                      "report": str((args.output_root / "99_logs" / "figure_quality_report.json").resolve())}, ensure_ascii=False))
+    sys.stdout.write(json.dumps({"status": report["status"], "rejected_count": len(report.get("rejected", [])),
+                      "report": str((args.output_root / "99_logs" / "figure_quality_report.json").resolve())}, ensure_ascii=False) + "\n")
     return 0
 
 

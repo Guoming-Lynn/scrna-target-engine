@@ -10,6 +10,7 @@ import argparse
 import json
 import math
 import re
+import sys
 import textwrap
 from pathlib import Path
 
@@ -101,8 +102,8 @@ def build_board(output_root: Path, output_dir: Path | None = None, target_gene: 
         if candidate.exists():
             try:
                 config_target = json.loads(candidate.read_text(encoding="utf-8-sig")).get("TARGET_GENE")
-            except Exception:
-                pass
+            except (OSError, json.JSONDecodeError, UnicodeError, TypeError):
+                config_target = None
     target_gene = str(config_target or "scRNA").strip()
 
     sections: list[tuple[str, list[Path]]] = []
@@ -216,8 +217,8 @@ def main() -> int:
     parser.add_argument("--target-gene")
     args = parser.parse_args()
     manifest = build_board(args.output_root.resolve(), args.output_dir.resolve() if args.output_dir else None, args.target_gene)
-    print(json.dumps({"status": "ok", "source_figure_count": manifest["source_figure_count"],
-                      "output_png": manifest["output_png"], "output_pdf": manifest["output_pdf"]}, ensure_ascii=False))
+    sys.stdout.write(json.dumps({"status": "ok", "source_figure_count": manifest["source_figure_count"],
+                      "output_png": manifest["output_png"], "output_pdf": manifest["output_pdf"]}, ensure_ascii=False) + "\n")
     return 0
 
 

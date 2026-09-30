@@ -28,6 +28,7 @@ dev = ["pytest==8.4.2"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+norecursedirs = ["legacy"]
 pythonpath = ["scripts"]
 addopts = "-q"
 

@@ -35,7 +35,6 @@ from local_enrichment import GseaNotRun, gmt_sha256, local_gsea_table, local_ora
 from scientific_plots import plot_ora_results, plot_gsea_results
 
 # Import local publication plotting utilities
-sys.path.insert(0, str(Path(__file__).parent))
 from plot_utils import (
     set_publication_style,
     save_publication_figure,

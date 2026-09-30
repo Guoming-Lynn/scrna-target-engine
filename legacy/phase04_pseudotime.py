@@ -37,12 +37,10 @@ import seaborn as sns
 import scanpy as sc
 
 # Import local publication plotting utilities
-sys.path.insert(0, str(Path(__file__).parent))
+from plot_panels import plot_pseudotime_progression_panel, plot_staged_cascade_heatmap
 from plot_utils import (
     set_publication_style,
     save_publication_figure,
-    plot_pseudotime_progression_panel,
-    plot_staged_cascade_heatmap,
     COLOR_CASE,
     COLOR_CONTROL,
     PALETTE_6,

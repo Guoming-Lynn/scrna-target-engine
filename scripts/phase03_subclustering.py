@@ -38,19 +38,17 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import scanpy as sc
 from config_contract import batch_column
-from figure_recipes import qc_metric_panel, expression_figure_suite, umap_category_palette
+from figure_recipes import expression_figure_suite, qc_metric_panel, umap_category_palette
+from plot_panels import plot_composition_stacked_barplot, plot_two_bar_composition
 
 
 # Import local publication plotting utilities
-sys.path.insert(0, str(Path(__file__).parent))
 from plot_utils import (
     set_publication_style,
     save_publication_figure,
     plot_feature_coolwarm,
     plot_split_violin_boxplot,
     plot_modular_dotplot,
-    plot_composition_stacked_barplot,
-    plot_two_bar_composition,
     COLOR_CASE,
     COLOR_CONTROL,
     PALETTE_6,

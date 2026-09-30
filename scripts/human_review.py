@@ -6,6 +6,7 @@ update_all_requested_figures.py. Never import these original execution scripts.
 import argparse
 import hashlib
 import json
+import sys
 from pathlib import Path
 
 
@@ -41,8 +42,9 @@ def draw_review(adata, key, directory, config):
     import pandas as pd
     import matplotlib.pyplot as plt
     import scanpy as sc
+    from plot_panels import plot_two_bar_composition
     from plot_utils import (save_publication_figure, plot_modular_dotplot,
-                            plot_two_bar_composition, plot_feature_coolwarm,
+                            plot_feature_coolwarm,
                             plot_split_violin_boxplot, PALETTE_6, PALETTE_12)
     import seaborn as sns
     from figure_recipes import qc_metric_panel, expression_figure_suite, umap_category_palette
@@ -161,13 +163,14 @@ def review(checkpoint, phase, config):
         state = {'source_sha256': source_hash, 'round_dir': str(rd)}
         current.write_text(json.dumps(state, indent=2), encoding='utf-8')
         draw_review(a, key, rd / 'figures_and_tables', config)
-        print(f'Needs human review: {rd / "decision.json"}', flush=True)
-        print('Use final_name for broad cell types (TARGET_CELLTYPE_NAME).' if phase == 'phase02' else 'Select keep/drop; supply final subtype names when accepting.', flush=True)
+        sys.stdout.write(f'Needs human review: {rd / "decision.json"}\n')
+        message = 'Use final_name for broad cell types (TARGET_CELLTYPE_NAME).' if phase == 'phase02' else 'Select keep/drop; supply final subtype names when accepting.'
+        sys.stdout.write(message + "\n")
         return 2
     rd = Path(state['round_dir'])
     decision = json.loads((rd / 'decision.json').read_text(encoding='utf-8-sig'))
     if not validate(decision, source_hash, clusters):
-        print(f'Waiting for human review: {rd / "decision.json"}', flush=True)
+        sys.stdout.write(f'Waiting for human review: {rd / "decision.json"}\n')
         return 2
     drops = [str(r['cluster']) for r in decision['clusters'] if r['action'] == 'drop']
     if drops:

@@ -8,7 +8,6 @@ from datetime import datetime
 import numpy as np
 import pandas as pd
 import scanpy as sc
-import scrublet as scr
 import anndata as ad
 import seaborn as sns
 import matplotlib
@@ -19,7 +18,7 @@ from scipy import sparse as sp
 # Set matplotlib backend to 'Agg' for headless rendering
 matplotlib.use('Agg')
 
-# Colors
+# QC plot colors come from plot_utils.
 from plot_utils import COLOR_CASE as CASE_COLOR, COLOR_CONTROL as CONTROL_COLOR
 from figure_recipes import ranked_violin, cell_count_bars, qc_scatter, scrublet_comparison, scrublet_histograms
 from config_contract import batch_column
@@ -27,98 +26,17 @@ from input_checks import input_rejection
 from pipeline_utils import resolve_target_gene
 
 
-class InputRejected(RuntimeError):
-    """The supplied object is not a usable expression matrix for this run."""
+from phase01_scrublet import run_sample_scrublet
+from phase01_support import (
+    InputRejected,
+    load_input,
+    plot_qc_violin,
+    robust_median_mad,
+    save_fig,
+    setup_logger,
+    write_ingestion_audit,
+)
 
-
-def load_input(input_path: Path, input_format: str, config: dict):
-    """Load supported formats, including ordinary GEO text matrices."""
-    if input_format == "10x_mtx":
-        return sc.read_10x_mtx(input_path, var_names='gene_symbols', make_unique=True)
-    if input_format == "h5ad":
-        return sc.read_h5ad(input_path)
-    if input_format == "h5":
-        return sc.read_10x_h5(input_path)
-    if input_format in {"csv", "tsv", "txt", "dense_csv", "dense_tsv"}:
-        sep = "," if input_format in {"csv", "dense_csv"} else "\t"
-        frame = pd.read_csv(input_path, sep=sep, index_col=0, compression="infer")
-        orientation = str(config.get("TEXT_MATRIX_ORIENTATION", "genes_by_cells")).lower()
-        if orientation == "cells_by_genes":
-            frame = frame.T
-        elif orientation == "auto":
-            requested = str(config.get("TARGET_GENE", ""))
-            row_match = requested in frame.index or requested.casefold() in {str(x).casefold() for x in frame.index}
-            col_match = requested in frame.columns or requested.casefold() in {str(x).casefold() for x in frame.columns}
-            if col_match and not row_match:
-                frame = frame.T
-            elif not row_match and not col_match and frame.shape[0] < frame.shape[1]:
-                frame = frame.T
-        frame = frame.apply(pd.to_numeric, errors="coerce")
-        if frame.isna().any().any():
-            raise InputRejected("Text matrix contains non-numeric expression values")
-        return ad.AnnData(X=frame.to_numpy(dtype=float).T,
-                           obs=pd.DataFrame(index=frame.columns.astype(str)),
-                           var=pd.DataFrame(index=frame.index.astype(str)))
-    raise InputRejected(f"Unsupported INPUT_FORMAT: {input_format}")
-
-
-def write_ingestion_audit(path: Path, audit: dict) -> None:
-    path.write_text(json.dumps(audit, indent=2, ensure_ascii=False), encoding="utf-8")
-
-# ----------------------------------------------------------------------
-# Helper Functions
-# ----------------------------------------------------------------------
-
-def setup_logger(log_file: Path) -> logging.Logger:
-    """Setup a basic logger to file and stdout."""
-    logger = logging.getLogger("phase01_qc_scrublet")
-    logger.setLevel(logging.INFO)
-    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-    
-    if logger.handlers:
-        logger.handlers.clear()
-    fh = logging.FileHandler(log_file)
-    fh.setFormatter(formatter)
-    logger.addHandler(fh)
-    
-    ch = logging.StreamHandler()
-    ch.setFormatter(formatter)
-    logger.addHandler(ch)
-    return logger
-
-def save_fig(fig, output_path: Path, filename_base: str):
-    from plot_utils import save_publication_figure
-    save_publication_figure(fig, output_path / filename_base)
-
-def plot_qc_violin(adata, metric, group_col, output_dir, filename, palette, ylabel=""):
-    """Condition-colored full-data violin with white boxes and 100 sampled dots."""
-    fig, ax = plt.subplots(figsize=(9, 5))
-    ranked_violin(adata.obs, group_col, metric, ax, palette=palette,
-                  seed=int(adata.uns.get('plot_seed', 42)))
-    if ylabel:
-        ax.set_ylabel(ylabel)
-    from plot_utils import save_publication_figure
-    save_publication_figure(fig, Path(output_dir) / filename)
-
-def robust_median_mad(data):
-    """
-    Computes robust median and MAD.
-    If MAD is 0 (can happen with sparse metrics like pct_hb),
-    fall back to IQR / 1.349.
-    Returns (median, raw_mad, scaled_mad).
-    """
-    data = np.asarray(data, dtype=float)
-    data = data[np.isfinite(data)]
-    med = np.median(data) if data.size else np.nan
-    mad_raw = np.median(np.abs(data-med)) if data.size else np.nan
-    mad = 1.4826 * mad_raw if data.size else np.nan
-    if not np.isfinite(mad) or mad <= 1e-9:
-        q75, q25 = np.percentile(data, [75, 25])
-        iqr = q75 - q25
-        mad = iqr / 1.349 if iqr > 1e-9 else 1e-3
-    return med, mad_raw, mad
-
-# ----------------------------------------------------------------------
 # Main Execution
 # ----------------------------------------------------------------------
 
@@ -126,7 +44,7 @@ def main():
     config_path = sys.argv[1] if len(sys.argv) > 1 else "config.json"
     config_path = Path(config_path)
     if not config_path.exists():
-        print(f"Error: Config file not found at {config_path}")
+        sys.stderr.write(f"Error: Config file not found at {config_path}\n")
         sys.exit(1)
 
     with open(config_path, "r", encoding="utf-8-sig") as f:
@@ -403,53 +321,15 @@ def main():
 
         # 10. Scrublet sample-wise
         logger.info("Running Scrublet sample-wise...")
-        scrublet_res = []
-        adata.obs['doublet_score'] = np.nan
-        adata.obs['scrublet_status'] = 'not_evaluated'
-        adata.obs['predicted_doublet'] = False
-        
-        distributions = {}
-        for i, sample in enumerate(samples):
-            if SKIP_SCRUBLET:
-                logger.warning("SKIP_SCRUBLET=true; retaining all cells after QC")
-                break
-            mask = adata.obs['sample_id'] == sample
-            sub_adata = adata[mask]
-            
-            if len(sub_adata) < 50:
-                logger.warning(f"Sample {sample} has too few cells ({len(sub_adata)}) for Scrublet. Skipping.")
-                continue
-
-            scrub = scr.Scrublet(sub_adata.X, expected_doublet_rate=SCRUBLET_RATE)
-            doublet_scores, predicted_doublets = scrub.scrub_doublets(min_counts=2, min_cells=3, min_gene_variability_pctl=85, n_prin_comps=30)
-            
-            # Re-threshold if necessary
-            auto_thresh = scrub.threshold_
-            thresh = auto_thresh
-            if thresh is None or not np.isfinite(thresh) or thresh > SCRUBLET_MAX_THRESHOLD:
-                thresh = SCRUBLET_MAX_THRESHOLD
-                predicted_doublets = doublet_scores > thresh
-                
-            adata.obs.loc[mask, 'scrublet_status'] = 'evaluated'
-            adata.obs.loc[mask, 'doublet_score'] = doublet_scores
-            adata.obs.loc[mask, 'predicted_doublet'] = predicted_doublets
-            
-            num_doublets = predicted_doublets.sum()
-            scrublet_res.append({
-                'sample_id': sample,
-                'total_cells': len(sub_adata),
-                'doublets': num_doublets,
-                'doublet_rate': num_doublets / len(sub_adata),
-                'auto_threshold': auto_thresh,
-                'effective_threshold': thresh,
-                'threshold_mode': 'auto' if auto_thresh == thresh else 'capped',
-                'threshold': thresh
-            })
-            
-            simulated = np.asarray(scrub.doublet_scores_sim_)
-            distributions[sample] = (doublet_scores, simulated)
-            safe_sample = ''.join(c if c.isalnum() or c in '-_.' else '_' for c in str(sample))
-            pd.DataFrame({'observed': pd.Series(doublet_scores), 'simulated': pd.Series(simulated)}).to_csv(dir_scrub_tables / f'{safe_sample}_score_distributions.csv', index=False)
+        scrublet_res, distributions = run_sample_scrublet(
+            adata,
+            samples,
+            skip=SKIP_SCRUBLET,
+            rate=SCRUBLET_RATE,
+            max_threshold=SCRUBLET_MAX_THRESHOLD,
+            table_dir=dir_scrub_tables,
+            logger=logger,
+        )
         scrublet_histograms(distributions, scrublet_res, dir_scrub_figs / 'scrublet_score_distributions')
 
         df_scrublet = pd.DataFrame(scrublet_res)

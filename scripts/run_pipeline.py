@@ -206,8 +206,8 @@ def main() -> int:
             audit_info = json.loads(audit_report.read_text(encoding="utf-8"))
             if not audit_info.get("metadata", {}).get("has_case_label", False) or not audit_info.get("metadata", {}).get("has_control_label", False):
                 degradation_reasons.append("missing_case_or_control_label")
-        except Exception:
-            pass
+        except (OSError, json.JSONDecodeError, UnicodeError, TypeError, ValueError):
+            degradation_reasons.append("audit_report_unreadable")
     if degradation_reasons and not args.stop_after:
         outcome = "completed_with_degradation"
     status["outcome"] = outcome

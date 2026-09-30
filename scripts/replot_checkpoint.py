@@ -38,7 +38,7 @@ def main():
         raise ValueError(f'Unknown groupby: {args.groupby}')
     adata.obs[args.groupby] = adata.obs[args.groupby].astype('category')
     draw_review(adata, args.groupby, destination, config)
-    print(f'Rendered {len(list(destination.glob("*.png")))} PNG/PDF pairs to {destination}', flush=True)
+    sys.stdout.write(f'Rendered {len(list(destination.glob("*.png")))} PNG/PDF pairs to {destination}\n')
 
 
 if __name__ == '__main__':
