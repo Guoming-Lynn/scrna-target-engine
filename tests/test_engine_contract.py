@@ -239,6 +239,30 @@ def test_ora_bh_includes_zero_overlap_sets_in_the_universe(tmp_path: Path) -> No
     assert float(table.loc["HIT", "Adjusted P-value"]) == pytest.approx(min(1.0, raw * 2))
 
 
+def test_synthetic_10x_h5_loads_gene_symbols(tmp_path: Path) -> None:
+    import h5py
+    import numpy as np
+    from phase01_support import load_input
+
+    path = tmp_path / "filtered_feature_bc_matrix.h5"
+    with h5py.File(path, "w") as handle:
+        matrix = handle.create_group("matrix")
+        matrix.create_dataset("barcodes", data=[b"AAAC-1", b"AAAT-1"])
+        matrix.create_dataset("data", data=np.array([1, 3], dtype=np.int32))
+        matrix.create_dataset("indices", data=np.array([0, 1], dtype=np.int32))
+        matrix.create_dataset("indptr", data=np.array([0, 1, 2], dtype=np.int32))
+        matrix.create_dataset("shape", data=np.array([2, 2], dtype=np.int32))
+        features = matrix.create_group("features")
+        features.create_dataset("id", data=[b"ENSG1", b"ENSG2"])
+        features.create_dataset("name", data=[b"IFITM3", b"ACTB"])
+        features.create_dataset("feature_type", data=[b"Gene Expression", b"Gene Expression"])
+        features.create_dataset("genome", data=[b"GRCh38", b"GRCh38"])
+    loaded = load_input(path, "h5", {})
+    assert loaded.n_obs == 2
+    assert list(loaded.var_names) == ["IFITM3", "ACTB"]
+    assert float(loaded.X[0, 0]) == 1.0
+
+
 def test_harmony_cluster_count_never_asks_for_one_cluster() -> None:
     from pipeline_utils import harmony_cluster_count
 

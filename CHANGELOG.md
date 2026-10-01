@@ -12,3 +12,4 @@
 - Scrublet 使用配置里的 `RANDOM_SEED`。ORA 的 BH 分母包含与背景有交集但重叠为 0 的基因集。
 - `write_demo_h5ad.py` 写出一份带固定种子的合成矩阵，供 Studio 演示。不是策展数据。
 - 合成矩阵可以在断网时跑完四个阶段。80 个细胞的图质量仍会因为小提琴面板细胞数不足被拒绝。空的经典 marker 点图和没有显著基因的差异表不再中断流程。Harmony 不再向当前 harmonypy 请求 1 个 cluster。
+- 10x h5 用 `scanpy.read_10x_h5` 读入。测试用合成的两细胞矩阵，不使用真实 Cell Ranger 文件。
