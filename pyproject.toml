@@ -7,6 +7,7 @@ name = "scrna-target-engine"
 version = "0.1.0"
 description = "Cell-level quicklook engine. It does not perform donor-level inference."
 readme = "README.md"
+license = { text = "Copyright 2026 GuomingLin. All rights reserved." }
 requires-python = ">=3.11,<3.12"
 dependencies = [
   "anndata==0.12.19",
