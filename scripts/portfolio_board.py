@@ -78,6 +78,13 @@ def _ordered_pngs(stage_dir: Path, patterns: list[str]) -> list[Path]:
     return selected
 
 
+def _table_rel(path: Path, root: Path) -> str:
+    for candidate in (path.with_suffix(".csv"), path.with_suffix(".tsv")):
+        if candidate.is_file():
+            return str(candidate.relative_to(root)).replace("\\", "/")
+    return ""
+
+
 def _label(path: Path) -> str:
     text = path.stem.replace("_", " ")
     return "\n".join(textwrap.wrap(text, width=28, break_long_words=False))
@@ -185,7 +192,12 @@ def build_board(output_root: Path, output_dir: Path | None = None, target_gene: 
             section_manifest["figures"].append({
                 "label": path.stem,
                 "source": str(path.resolve()),
-                "relative_source": str(path.relative_to(output_root)),
+                "relative_source": str(path.relative_to(output_root)).replace("\\", "/"),
+                "table": _table_rel(path, output_root),
+                "x": x,
+                "y": y,
+                "width": tile_w,
+                "height": image_h_px,
             })
         cursor_y += rows * tile_h_px + int(section_gap * px_per_in)
         manifest_sections.append(section_manifest)
@@ -202,6 +214,7 @@ def build_board(output_root: Path, output_dir: Path | None = None, target_gene: 
         "output_pdf": str(pdf_path.resolve()),
         "dpi": DEFAULT_DPI,
         "canvas_width_px": 1960,
+        "canvas_height_px": canvas_h,
         "source_figure_count": sum(len(s["figures"]) for s in manifest_sections),
         "sections": manifest_sections,
         "accessibility_note": "Overview board; each panel retains its source PNG and filename label.",

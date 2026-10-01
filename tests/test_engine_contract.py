@@ -278,3 +278,20 @@ def test_local_gsea_returns_fdr_column(tmp_path: Path) -> None:
     table = local_gsea_table(ranked, gmt, permutations=5)
     assert "FDR q-val" in table.columns
     assert set(table["Term"]) == {"SET_A", "SET_B"}
+
+
+def test_portfolio_board_records_each_tile(tmp_path: Path) -> None:
+    from PIL import Image
+    from portfolio_board import build_board
+
+    stage = tmp_path / "04_figures" / "01_qc"
+    stage.mkdir(parents=True)
+    Image.new("RGB", (20, 12), "white").save(stage / "cell_counts_clean.png")
+    (stage / "cell_counts_clean.csv").write_text("a\n1\n", encoding="utf-8")
+    manifest = build_board(tmp_path, target_gene="IFITM3")
+    tile = manifest["sections"][0]["figures"][0]
+    assert tile["relative_source"] == "04_figures/01_qc/cell_counts_clean.png"
+    assert tile["table"] == "04_figures/01_qc/cell_counts_clean.csv"
+    assert tile["width"] > 0
+    assert tile["height"] > 0
+    assert manifest["canvas_height_px"] > 0
