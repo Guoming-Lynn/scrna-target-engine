@@ -35,7 +35,7 @@ def test_demo_matrix_finishes_four_phases_offline(tmp_path: Path) -> None:
     env["PYTHONNOUSERSITE"] = "1"
     h5ad = tmp_path / "demo.h5ad"
     wrote = subprocess.run(
-        [sys.executable, str(DEMO), "--out", str(h5ad)],
+        [sys.executable, str(DEMO), "--out", str(h5ad), "--cells", "80"],
         check=False,
         capture_output=True,
         text=True,

@@ -205,7 +205,8 @@ def test_demo_matrix_is_synthetic_and_names_its_source(tmp_path: Path) -> None:
     path = tmp_path / "demo.h5ad"
     assert main(["--out", str(path)]) == 0
     data = ad.read_h5ad(path)
-    assert data.n_obs == 80
+    assert data.n_obs == 1600
+    assert data.n_vars == 250
     assert data.n_vars == 250
     assert "IFITM3" in list(data.var_names)
     assert float(data.X.min()) >= 0
